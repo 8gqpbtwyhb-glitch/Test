@@ -137,7 +137,7 @@ T = {
         "book_ask": "Ask about this {kind}",
         "book_note": "Prices vary with dates and length of stay. For the best direct offer, call or write to us.",
         "next_room": "Next", "prev_room": "Previous", "all_rooms": "All lofts & suites",
-        "price_from": "From €{p}", "per_night": "/ night",
+        "price_from": "From €{p}", "per_night": "/ night", "in_city": "in Kalamata",
 
         # gallery page
         "gallery_page_title": "Gallery",
@@ -308,7 +308,7 @@ T = {
         "book_ask": "Ρωτήστε μας γι’ αυτόν τον χώρο",
         "book_note": "Οι τιμές διαφέρουν ανάλογα με τις ημερομηνίες και τη διάρκεια διαμονής. Για την καλύτερη προσφορά, καλέστε ή γράψτε μας.",
         "next_room": "Επόμενο", "prev_room": "Προηγούμενο", "all_rooms": "Όλα τα lofts & οι σουίτες",
-        "price_from": "Από €{p}", "per_night": "/ νύχτα",
+        "price_from": "Από €{p}", "per_night": "/ νύχτα", "in_city": "στην Καλαμάτα",
 
         "gallery_page_title": "Gallery",
         "gallery_page_lede": "Τα lofts, το κτίριο και το roof garden, σε εικόνες.",

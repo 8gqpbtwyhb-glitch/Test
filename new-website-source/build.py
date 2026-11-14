@@ -165,6 +165,7 @@ def lb(ctx, iid, inner, group, cls="", attrs=""):
 SZ_FULL = "100vw"
 SZ_HALF = "(min-width: 900px) 50vw, 100vw"
 SZ_THIRD = "(min-width: 1000px) 33vw, (min-width: 600px) 50vw, 100vw"
+SZ_MASONRY = "(min-width: 1000px) 33vw, 50vw"
 SZ_QUARTER = "(min-width: 900px) 25vw, 50vw"
 SZ_CARD = "(min-width: 1200px) 28vw, (min-width: 700px) 42vw, 80vw"
 
@@ -217,6 +218,7 @@ def head(ctx, title, desc, og=None, preload=""):
 <link rel="apple-touch-icon" href="{ctx.asset('img/apple-touch-icon.png')}">
 <link rel="manifest" href="{ctx.root}site.webmanifest">
 {pre}{preload}<link rel="stylesheet" href="{ctx.asset('css/site.css')}">
+<script type="speculationrules">{{"prerender":[{{"where":{{"and":[{{"href_matches":"/*"}},{{"not":{{"selector_matches":"[target=_blank]"}}}}]}},"eagerness":"moderate"}}]}}</script>
 <script>document.documentElement.className+=" js";setTimeout(function(){{if(!window.__allofts)document.documentElement.classList.remove("js")}},4000)</script>
 </head>
 '''
@@ -391,11 +393,11 @@ def cta(ctx):
 </section>'''
 
 def page_hero(ctx, eyebrow, title, lede="", cls=""):
-    l = f'<p class="page-hero__lede">{esc(lede)}</p>' if lede else ""
+    l = f'<p class="page-hero__lede rise" style="--d:160ms">{esc(lede)}</p>' if lede else ""
     return f'''<section class="page-hero {cls}">
   <div class="wrap">
-    <p class="eyebrow" data-reveal>{esc(eyebrow)}</p>
-    <h1 class="h1" data-reveal style="--d:80ms">{esc(title)}</h1>
+    <p class="eyebrow rise">{esc(eyebrow)}</p>
+    <h1 class="h1 rise" style="--d:80ms">{esc(title)}</h1>
     {l}
   </div>
 </section>'''
@@ -613,7 +615,7 @@ def room_page(ctx, r):
     mosaic = "".join(
         lb(ctx, iid, img(ctx, iid, SZ_HALF if i == 0 else SZ_QUARTER, lazy=i > 0), group, f"mosaic__item mosaic__item--{i + 1}")
         for i, iid in enumerate(ids[:5]))
-    more = "".join(lb(ctx, iid, frame(ctx, iid, SZ_THIRD, "", "", reveal=False, attrs=f' style="aspect-ratio:{MAN[iid]["w"]}/{MAN[iid]["h"]}"'), group, "masonry__item") for iid in ids[5:])
+    more = "".join(lb(ctx, iid, frame(ctx, iid, SZ_MASONRY, "", "", reveal=False, attrs=f' style="aspect-ratio:{MAN[iid]["w"]}/{MAN[iid]["h"]}"'), group, "masonry__item") for iid in ids[5:])
     kind = t["kind"][r["kind"]]
     facts = [(t["size"], size(ctx, r)), (t["guests"], t["upto_short"].format(n=r["guests"])), (t["bed"], t["bed_queen_short"])]
     if r["extra"]: facts.append(("+", C.EXTRA[r["extra"]][ctx.lang]))
@@ -633,10 +635,10 @@ def room_page(ctx, r):
     <nav class="crumbs" aria-label="Breadcrumb"><a href="{ctx.url("rooms/")}">{esc(t["nav_rooms"])}</a><span aria-hidden="true">/</span><span aria-current="page">{esc(r["name"])}</span></nav>
     <div class="room-head__grid">
       <div>
-        <p class="eyebrow" data-reveal><span class="num">{room_no(r)}</span>{esc(kind)}</p>
-        <h1 class="h1" data-reveal style="--d:80ms">{esc(r["name"])}</h1>
+        <p class="eyebrow rise"><span class="num">{room_no(r)}</span>{esc(kind)}</p>
+        <h1 class="h1 rise" style="--d:80ms">{esc(r["name"])}</h1>
       </div>
-      <p class="room-head__tag" data-reveal style="--d:160ms">{esc(r["tagline"][ctx.lang])}</p>
+      <p class="room-head__tag rise" style="--d:160ms">{esc(r["tagline"][ctx.lang])}</p>
     </div>
   </header>
 
@@ -677,7 +679,8 @@ def room_page(ctx, r):
     desc = f"{r['name']}: {r['tagline'][ctx.lang]} {size(ctx, r)}, {t['upto'].format(n=r['guests']).lower()}. Allofts, {'Kalamata' if ctx.lang == 'en' else 'Καλαμάτα'}."
     m = MAN[room_id(r)]
     og = f"{C.SITE['url']}/assets/{m['base']}-{m['variants'][min(2, len(m['variants']) - 1)][0]}.webp"
-    return page(ctx, r["name"], desc, body, "top-light page-room", "rooms/", og=og)
+    title = f"{r['name']}, {kind.lower()} {t['in_city']}"
+    return page(ctx, title, desc, body, "top-light page-room", "rooms/", og=og)
 
 # -------------------------------------------------------------- gallery ----
 def gallery(ctx):
@@ -688,7 +691,7 @@ def gallery(ctx):
         m = MAN[iid]
         room = IMAGES[iid]["room"]
         cap = ROOM[room]["name"] if room else t["tags"][IMAGES[iid]["tag"]]
-        inner = (f'<figure class="frame" style="aspect-ratio:{m["w"]}/{m["h"]}">{img(ctx, iid, SZ_THIRD)}</figure>'
+        inner = (f'<figure class="frame" style="aspect-ratio:{m["w"]}/{m["h"]}">{img(ctx, iid, SZ_MASONRY)}</figure>'
                  f'<span class="gallery__cap">{esc(cap)}</span>')
         items.append(lb(ctx, iid, inner, "gallery", "gallery__item", f' data-cat="{cat}"'))
     chips = "".join(f'<button class="chip{" is-active" if k == "all" else ""}" type="button" data-filter="{k}" aria-pressed="{"true" if k == "all" else "false"}">{esc(t["f_" + k])}</button>'
@@ -715,9 +718,9 @@ def about(ctx):
     body = f'''<section class="about-hero">
   <div class="wrap about-hero__grid">
     <div class="about-hero__text">
-      <p class="eyebrow" data-reveal>{esc(t["about_eyebrow"])}</p>
-      <h1 class="h1" data-reveal style="--d:80ms">{t["hero_title"]}</h1>
-      <p class="lede" data-reveal style="--d:160ms">{esc(ps[0])}</p>
+      <p class="eyebrow rise">{esc(t["about_eyebrow"])}</p>
+      <h1 class="h1 rise" style="--d:80ms">{t["hero_title"]}</h1>
+      <p class="lede rise" style="--d:160ms">{esc(ps[0])}</p>
     </div>
     {frame(ctx, "ext-day", SZ_HALF, "45", "about-hero__img", lazy=False)}
   </div>

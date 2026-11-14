@@ -1,2 +1,5 @@
 __pycache__/
 .image-cache.json
+
+# Private preview copies of the site (shared by hand, not published)
+previews/

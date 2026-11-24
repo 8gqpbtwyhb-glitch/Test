@@ -24,12 +24,12 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "output")
 
 # metres per unit (letter height = 4 units) to try, per shape
 UNITS = {
-    "FOTINI": [95, 110, 125],
-    "LOVE": [115, 130, 145],
+    "FOTINI": [100, 115, 130],
+    "LOVE": [120, 135, 150],
     "heart": [220, 300, 380, 460],
-    "FOTINI_wide": [90, 105, 120],
-    "FOTINI_font": [100, 115, 130],
-    "greek_font": [90, 105],
+    "FOTINI_wide": [95, 110, 125],
+    "FOTINI_font": [105, 120, 135],
+    "greek_font": [95, 110, 125],
 }
 THETAS = list(range(-30, 31, 5))
 

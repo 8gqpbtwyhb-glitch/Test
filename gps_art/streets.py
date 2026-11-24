@@ -75,6 +75,16 @@ def download(name, lat, lon, dist):
     if os.path.exists(fn):
         with open(fn, "rb") as f:
             return pickle.load(f)
+    pbf = os.path.join(CACHE, "pbf", "greater_london.osm.pbf")
+    if os.path.exists(pbf):
+        from . import pbf as P
+        data = P.extract(pbf, os.path.join(CACHE, "pbf", "walk_ways.pkl"))
+        js, stations = P.area_elements(data, lat, lon, dist)
+        G = ox.graph._create_graph([js], bidirectional=True)
+        G = ox.simplify_graph(G)
+        with open(fn, "wb") as f:
+            pickle.dump((G, stations), f)
+        return G, stations
     tdir = os.path.join(CACHE, "tiles")
     os.makedirs(tdir, exist_ok=True)
     filt = ox._overpass._get_network_filter("walk")

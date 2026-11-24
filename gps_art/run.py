@@ -81,7 +81,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shapes", default="FOTINI,FOTINI_wide,LOVE,heart,FOTINI_font,greek_font")
     ap.add_argument("--areas", default=",".join(A.AREAS))
-    ap.add_argument("--keep", type=int, default=8, help="placements routed per area+shape")
+    ap.add_argument("--keep", type=int, default=30, help="placements routed per area+shape")
     ap.add_argument("--top", type=int, default=3)
     args = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
@@ -126,7 +126,8 @@ def main():
                 break
         refined = []
         for c in picked:
-            r = S.refine(nets[c.area], shapes[sname], c)
+            r = S.flex_optimize(nets[c.area], shapes[sname], c) if sname != "heart" else c
+            r = S.refine(nets[c.area], shapes[sname], r)
             print(f"refined {sname} {c.area}: {c.score:.3f} -> {r.score:.3f}", flush=True)
             refined.append(r)
         refined.sort(key=lambda c: c.score)

@@ -18,7 +18,7 @@ CACHE = os.environ.get("GPS_ART_CACHE", os.path.join(os.path.dirname(__file__), 
 UTM = "EPSG:32630"  # UTM zone 30N covers London; metres
 
 # Hosts tried in order. overpass-api.de is the default; the kumi mirror is a fallback.
-OVERPASS_URLS = ["https://overpass.kumi.systems/api", "https://overpass-api.de/api",
+OVERPASS_URLS = ["https://maps.mail.ru/osm/tools/overpass/api", "https://overpass.kumi.systems/api",
                  "https://overpass.private.coffee/api"]
 
 ox.settings.use_cache = True

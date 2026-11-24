@@ -31,6 +31,8 @@ UNITS = {
     "FOTINI_v2": [95, 105, 115, 125],
     "FOTINI_2row": [85, 95, 105, 115],
     "LOVE_2row": [110, 125, 140, 155],
+    "F_heart": [180, 230, 280],
+    "PHI_heart": [180, 230, 280],
     "FOTINI_font": [105, 120, 135],
     "greek_font": [95, 110, 125],
 }
@@ -217,8 +219,10 @@ def write_summary(rows, verdicts, path=os.path.join(OUT, "summary.md"), intro=""
                  f"{st[0]} ({st[2]:.0f} m) | {en[0]} ({en[2]:.0f} m) | {m['readability']:.0f}/100 | {leg} |")
     L += ["", "Readability score: 100 means the route lies exactly on the drawn letters; it falls as the mean "
           "and 90th-percentile gap between the route and the intended shape grow, measured in stroke units "
-          "(1 unit = a quarter of the letter height). Around 60+ usually reads well; below ~45 it rarely does. "
-          "The final call is the 'Legible?' column, which comes from looking at each preview.", ""]
+          "(1 unit = a quarter of the letter height). It is useful for ranking placements of the SAME shape, "
+          "but it does not predict legibility on its own: several word routes score 60-67 and still do not read, "
+          "because each letter stroke is only 3-4 city blocks long. The deciding column is 'Legible?', which "
+          "comes from looking at every preview.", ""]
     for r in rows:
         m, val = r["metrics"], r["validation"]
         v = verdicts.get(r["name"], (None, ""))

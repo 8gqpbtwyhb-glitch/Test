@@ -32,6 +32,8 @@ BLOCK = {
     "I": (1.2, [[(0.6, 0), (0.6, 4)], [(0, 4), (1.2, 4)], [(0, 0), (1.2, 0)]]),
     "N": (2.2, [[(0, 0), (0, 4), (2.2, 0), (2.2, 4)]]),
     "|": (0.0, [[(0, 0), (0, 4)]]),        # plain I (no serifs)
+    # Greek capital phi: a box-ish ring with a stem through it
+    "Φ": (2.8, [[(0.3, 0.9), (0.3, 3.1), (2.5, 3.1), (2.5, 0.9), (0.3, 0.9)], [(1.4, 0), (1.4, 4)]]),
     "L": (2.0, [[(0, 4), (0, 0), (2, 0)]]),
     "V": (2.4, [[(0, 4), (1.2, 0), (2.4, 4)]]),
     "E": (2.0, [[(2, 4), (0, 4), (0, 0), (2, 0)], [(0, 2), (1.6, 2)]]),
@@ -417,6 +419,9 @@ def candidate_shapes():
         ("glyph", "V", 0.2, R2, 1.15), ("glyph", "L", 0.0, 0, 1.2), ("glyph", "O", 3.6, 0, 1.3),
         ("glyph", "E", 4.2, R2, 1.2), ("heart", 10.6, R2, 4.6)],
         links=[R2 + 4, 0, -0.9, R2])
+    # one big initial + heart (letters ~1 km tall fit in 12 km)
+    S["F_heart"] = build_layout("F_heart", [("glyph", "F", 0, 0, 1.2), ("heart", 6.0, 0, 4.4)], links=[2.2])
+    S["PHI_heart"] = build_layout("PHI_heart", [("glyph", "Φ", 0, 0, 1.0), ("heart", 6.2, 0, 4.4)], links=[2.2])
     S["LOVE"] = block_word("LOVE", links=[0, 0, 4, 0], spacing=dict.fromkeys(range(4), 1.3))
     S["heart"] = heart_only()
     return S

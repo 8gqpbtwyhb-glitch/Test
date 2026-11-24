@@ -18,7 +18,8 @@ CACHE = os.environ.get("GPS_ART_CACHE", os.path.join(os.path.dirname(__file__), 
 UTM = "EPSG:32630"  # UTM zone 30N covers London; metres
 
 # Hosts tried in order. overpass-api.de is the default; the kumi mirror is a fallback.
-OVERPASS_URLS = ["https://overpass-api.de/api", "https://overpass.kumi.systems/api"]
+OVERPASS_URLS = ["https://overpass.kumi.systems/api", "https://overpass-api.de/api",
+                 "https://overpass.private.coffee/api"]
 
 ox.settings.use_cache = True
 ox.settings.overpass_rate_limit = False   # the mirror's /status endpoint is non-standard
@@ -38,45 +39,81 @@ def _first(v):
     return v[0] if isinstance(v, list) else v
 
 
+def _overpass(query, tries=12, timeout=75):
+    """POST a query to the Overpass mirrors, retrying hung/failed backends."""
+    import requests, time
+    last = None
+    for k in range(tries):
+        url = OVERPASS_URLS[k % len(OVERPASS_URLS)] + "/interpreter"
+        try:
+            r = requests.post(url, data={"data": query}, timeout=timeout)
+            if r.status_code == 200:
+                return r.json()
+            last = f"HTTP {r.status_code}"
+            time.sleep(5 if r.status_code == 429 else 1)
+        except Exception as e:
+            last = repr(e)[:120]
+    raise RuntimeError(f"Overpass failed after {tries} tries: {last}")
+
+
+def _tiles(lat, lon, dist, tile_m=1200):
+    dlat = dist / 111_320
+    dlon = dist / (111_320 * math.cos(math.radians(lat)))
+    n = max(1, int(math.ceil(2 * dist / tile_m)))
+    for i in range(n):
+        for j in range(n):
+            s_ = lat - dlat + 2 * dlat * i / n
+            w_ = lon - dlon + 2 * dlon * j / n
+            yield (s_, w_, s_ + 2 * dlat / n, w_ + 2 * dlon / n)
+
+
 def download(name, lat, lon, dist):
+    """Walk network + stations around (lat, lon), fetched as small tiles so a
+    slow mirror never has to answer one huge query. Cached on disk."""
     os.makedirs(CACHE, exist_ok=True)
-    ox.settings.cache_folder = os.path.join(CACHE, "http")
     fn = os.path.join(CACHE, f"{name}_{dist}.pkl")
     if os.path.exists(fn):
         with open(fn, "rb") as f:
             return pickle.load(f)
-    last = None
-    for url in OVERPASS_URLS:
-        ox.settings.overpass_url = url
-        try:
-            G = ox.graph_from_point((lat, lon), dist=dist, network_type="walk", simplify=True,
-                                    retain_all=False)
-            try:
-                st = ox.features_from_point((lat, lon), dist=dist + 800,
-                                            tags={"railway": ["station", "halt"]})
-                st = st[st.geometry.notna()]
-                stations = []
-                for _, r in st.iterrows():
-                    nm = r.get("name")
-                    if not isinstance(nm, str):
-                        continue
-                    c = r.geometry.centroid
-                    kind = []
-                    for k in ("station", "network"):
-                        v = r.get(k)
-                        if isinstance(v, str):
-                            kind.append(v)
-                    stations.append((nm, c.y, c.x, "; ".join(kind)))
-            except Exception as e:  # stations are a nicety, not essential
-                print("station lookup failed:", e)
-                stations = []
-            with open(fn, "wb") as f:
-                pickle.dump((G, stations), f)
-            return G, stations
-        except Exception as e:
-            print(f"download via {url} failed: {e!r}")
-            last = e
-    raise last
+    tdir = os.path.join(CACHE, "tiles")
+    os.makedirs(tdir, exist_ok=True)
+    filt = ox._overpass._get_network_filter("walk")
+    elements = {}
+    for (s_, w_, n_, e_) in _tiles(lat, lon, dist):
+        key = f"{s_:.5f}_{w_:.5f}_{n_:.5f}_{e_:.5f}"
+        tf = os.path.join(tdir, key + ".pkl")
+        if os.path.exists(tf):
+            with open(tf, "rb") as f:
+                js = pickle.load(f)
+        else:
+            q = f"[out:json][timeout:60];(way{filt}({s_},{w_},{n_},{e_});>;);out;"
+            js = _overpass(q)
+            with open(tf, "wb") as f:
+                pickle.dump(js, f)
+        for el in js["elements"]:
+            elements[(el["type"], el["id"])] = el
+    G = ox.graph._create_graph([{"elements": list(elements.values())}], bidirectional=True)
+    G = ox.simplify_graph(G)
+    # stations
+    dlat = (dist + 800) / 111_320
+    dlon = (dist + 800) / (111_320 * math.cos(math.radians(lat)))
+    q = (f"[out:json][timeout:60];nwr[\"railway\"~\"^(station|halt)$\"]"
+         f"({lat - dlat},{lon - dlon},{lat + dlat},{lon + dlon});out center;")
+    stations = []
+    try:
+        for el in _overpass(q)["elements"]:
+            t = el.get("tags", {})
+            nm = t.get("name")
+            la = el.get("lat", el.get("center", {}).get("lat"))
+            lo = el.get("lon", el.get("center", {}).get("lon"))
+            if nm and la is not None:
+                kind = "; ".join(v for v in (t.get("station"), t.get("network")) if v)
+                stations.append((nm, la, lo, kind))
+    except Exception as e:
+        print("station lookup failed:", e)
+    with open(fn, "wb") as f:
+        pickle.dump((G, stations), f)
+    return G, stations
 
 
 @dataclass

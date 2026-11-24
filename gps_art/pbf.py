@@ -88,3 +88,34 @@ def area_elements(data, lat, lon, dist):
     dl2, dn2 = dlat + 800 / 111_320, dlon + 800 / 111_320 / math.cos(math.radians(lat))
     st = [x for x in stations if abs(x[1] - lat) < dl2 and abs(x[2] - lon) < dn2]
     return {"elements": els}, st
+
+
+class _Major(osmium.SimpleHandler):
+    MAJOR = {"trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"}
+
+    def __init__(self):
+        super().__init__()
+        self.roads = []
+
+    def way(self, w):
+        if w.tags.get("highway") not in self.MAJOR:
+            return
+        try:
+            pts = [(nd.location.lat, nd.location.lon) for nd in w.nodes]
+        except osmium.InvalidLocationError:
+            return
+        if any(BBOX[0] < la < BBOX[2] and BBOX[1] < lo < BBOX[3] for la, lo in pts):
+            self.roads.append((w.tags.get("name") or w.tags.get("ref") or w.tags.get("highway"), pts))
+
+
+def major_roads(pbf, out):
+    """All trunk/primary/secondary roads (including those whose pavements are
+    mapped separately and therefore absent from the walk graph)."""
+    if os.path.exists(out):
+        with open(out, "rb") as f:
+            return pickle.load(f)
+    h = _Major()
+    h.apply_file(pbf, locations=True)
+    with open(out, "wb") as f:
+        pickle.dump(h.roads, f)
+    return h.roads

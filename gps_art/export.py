@@ -210,3 +210,39 @@ def folium_map(path, pl, title, spots, station):
         folium.CircleMarker(q.tolist(), radius=5, color="#7c3aed", fill=True, tooltip=txt).add_to(m)
     m.fit_bounds([ll.min(axis=0).tolist(), ll.max(axis=0).tolist()])
     m.save(path)
+
+
+def major_crossings(route_xy, roads_ll):
+    """Count where the route crosses (not runs along) a main road. roads_ll from
+    pbf.major_roads: [(name, [(lat, lon), ...])]."""
+    from collections import Counter
+    from shapely.strtree import STRtree
+    R = LineString(route_xy)
+    lo, hi = route_xy.min(axis=0) - 50, route_xy.max(axis=0) + 50
+    geoms, names = [], []
+    for nm, pts in roads_ll:
+        ll = np.array(pts)
+        x, y = _to_xy.transform(ll[:, 1], ll[:, 0])
+        if x.max() < lo[0] or x.min() > hi[0] or y.max() < lo[1] or y.min() > hi[1]:
+            continue
+        geoms.append(LineString(np.c_[x, y])); names.append(nm)
+    c = Counter()
+    # sample route as short segments; a crossing = segment intersects road but
+    # the route is not running alongside it (pavement parallel to road)
+    for a, b in zip(route_xy[:-1], route_xy[1:]):
+        seg = LineString([a, b])
+        if seg.length < 0.5:
+            continue
+        for g, nm in zip(geoms, names):
+            if seg.intersects(g):
+                # direction check: crossing if roughly perpendicular (> 35 deg)
+                p = g.interpolate(g.project(seg.interpolate(0.5, normalized=True)))
+                d = g.interpolate(min(g.length, g.project(p) + 5))
+                v1 = np.array(b) - np.array(a)
+                v2 = np.array(d.coords[0]) - np.array(p.coords[0])
+                if np.linalg.norm(v2) < 1e-6:
+                    continue
+                cosang = abs(v1 @ v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+                if cosang < 0.82:
+                    c[nm] += 1
+    return c

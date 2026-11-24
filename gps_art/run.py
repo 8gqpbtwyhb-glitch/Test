@@ -246,12 +246,10 @@ def write_summary(rows, verdicts, path=os.path.join(OUT, "summary.md"), intro=""
               f"{'**passed**' if val['ok'] else '**FAILED**'}", ""]
         spots, summ = r["spots"], r["spot_summary"]
         L.append("Problem spots:")
-        cross = [t for k, t, _ in spots if k == "crossing"]
-        if cross:
-            from collections import Counter
-            cc = Counter(cross)
-            L.append("- Crossings of main roads (use the signalled crossing; GPS keeps drawing while you wait): "
-                     + "; ".join(f"{t}" + (f" ×{n}" if n > 1 else "") for t, n in cc.most_common()))
+        cc = r.get("crossings") or {}
+        if cc:
+            L.append("- Main roads you cross, some more than once (use signalled crossings; waiting does not spoil the drawing): "
+                     + ", ".join(t for t, n in sorted(cc.items(), key=lambda x: -x[1])))
         for kind, label in (("bridge", "Bridges"), ("tunnel", "Tunnels/underpasses"), ("steps", "Steps")):
             items = sorted({t for k, t, _ in spots if k == kind})
             if items:
@@ -262,7 +260,8 @@ def write_summary(rows, verdicts, path=os.path.join(OUT, "summary.md"), intro=""
             L.append("- One-way for traffic (fine on foot, the pavement is two-way): "
                      + ", ".join(f"{n} ({l} m)" for n, l in summ["oneway"][:8]))
         if summ["paths"]:
-            L.append("- Footpaths / park paths (some parks and squares lock at dusk — run in daylight): "
+            L.append("- Separately mapped pavements/footpaths (mostly the pavement beside a street; a few are passages, "
+                     "squares or park paths that may close at night, so run in daylight): "
                      + ", ".join(f"{n} ({l} m)" for n, l in summ["paths"][:8]))
         L.append("")
     with open(path, "w") as f:

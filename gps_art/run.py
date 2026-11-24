@@ -28,10 +28,13 @@ UNITS = {
     "LOVE": [120, 135, 150],
     "heart": [220, 300, 380, 460],
     "FOTINI_wide": [95, 110, 125],
+    "FOTINI_v2": [95, 105, 115, 125],
+    "FOTINI_2row": [85, 95, 105, 115],
+    "LOVE_2row": [110, 125, 140, 155],
     "FOTINI_font": [105, 120, 135],
     "greek_font": [95, 110, 125],
 }
-THETAS = list(range(-30, 31, 5))
+THETAS = list(range(-35, 36, 5))
 
 
 def all_shapes():
@@ -126,15 +129,37 @@ def main():
                 break
         refined = []
         for c in picked:
+            if sname != "heart":
+                b = S.box_fit(nets[c.area], shapes[sname], c, rots=(0,))
+                c = b if b.score < c.score else c
             r = S.flex_optimize(nets[c.area], shapes[sname], c) if sname != "heart" else c
             r = S.refine(nets[c.area], shapes[sname], r)
             print(f"refined {sname} {c.area}: {c.score:.3f} -> {r.score:.3f}", flush=True)
             refined.append(r)
         refined.sort(key=lambda c: c.score)
         final[sname] = refined
-    with open(os.path.join(OUT, "..", ".cache", "final.pkl"), "wb") as f:
-        pickle.dump({k: [(p.area, p.shape, p.unit, p.theta, p.cx, p.cy) for p in v] for k, v in final.items()}, f)
+    fp = os.path.join(OUT, "..", ".cache", "final.pkl")
+    saved = pickle.load(open(fp, "rb")) if os.path.exists(fp) else {}
+    saved.update({k: [(p.area, p.shape, p.unit, p.theta, p.cx, p.cy, p.flex) for p in v] for k, v in final.items()})
+    with open(fp, "wb") as f:
+        pickle.dump(saved, f)
     write_outputs(final, nets, shapes)
+
+
+def from_saved(path=os.path.join(OUT, "..", ".cache", "final.pkl")):
+    """Rebuild routed placements from a saved search (no searching)."""
+    with open(path, "rb") as f:
+        saved = pickle.load(f)
+    shapes, nets, final = all_shapes(), {}, {}
+    for sname, lst in saved.items():
+        final[sname] = []
+        for area, shp, unit, theta, cx, cy, flex in lst:
+            if area not in nets:
+                nets[area] = load_net(area)[0]
+            pl = S.Placement(area, shp, unit, theta, cx, cy, flex=flex)
+            S.evaluate(nets[area], shapes[sname], pl)
+            final[sname].append(pl)
+    return final, nets, shapes
 
 
 def write_outputs(final, nets, shapes):
@@ -166,8 +191,11 @@ def write_outputs(final, nets, shapes):
                              start_station=(st[0], st[5], sd) if st else None,
                              end_station=(st2[0], st2[5], sd2) if st2 else None))
             print(name, pl.area, json.dumps(val), flush=True)
-    with open(os.path.join(OUT, "..", ".cache", "rows.pkl"), "wb") as f:
-        pickle.dump(rows, f)
+    fp = os.path.join(OUT, "..", ".cache", "rows.pkl")
+    old = pickle.load(open(fp, "rb")) if os.path.exists(fp) else []
+    names = {r["name"] for r in rows}
+    with open(fp, "wb") as f:
+        pickle.dump([r for r in old if r["name"] not in names] + rows, f)
     return rows
 
 

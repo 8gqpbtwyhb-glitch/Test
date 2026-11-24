@@ -31,6 +31,7 @@ BLOCK = {
     # serif I: the serifs keep it an "I" even when a connector touches it
     "I": (1.2, [[(0.6, 0), (0.6, 4)], [(0, 4), (1.2, 4)], [(0, 0), (1.2, 0)]]),
     "N": (2.2, [[(0, 0), (0, 4), (2.2, 0), (2.2, 4)]]),
+    "|": (0.0, [[(0, 0), (0, 4)]]),        # plain I (no serifs)
     "L": (2.0, [[(0, 4), (0, 0), (2, 0)]]),
     "V": (2.4, [[(0, 4), (1.2, 0), (2.4, 4)]]),
     "E": (2.0, [[(2, 4), (0, 4), (0, 0), (2, 0)], [(0, 2), (1.6, 2)]]),
@@ -250,11 +251,41 @@ def build_shape(name, glyphs, links=None, heart=True, heart_height=4.4, heart_ga
         hw = hp[:, 0].max() - hp[:, 0].min()
         hp[:, 0] += xmax + heart_gap + hw / 2 if Gs else 0
         heart_pts = hp
-        Gh = nx.Graph()
-        for a, b in zip(hp[:-1], hp[1:]):
-            a, b = (round(a[0], 4), round(a[1], 4)), (round(b[0], 4), round(b[1], 4))
-            Gh.add_edge(a, b, weight=math.dist(a, b))
-        Gs.append(Gh)
+        Gs.append(_heart_graph(hp))
+    labels = list(name) + (["heart"] if heart else [])
+    return _assemble(name, Gs, labels, links, start_hint)
+
+
+def _heart_graph(hp):
+    Gh = nx.Graph()
+    for a, b in zip(hp[:-1], hp[1:]):
+        a, b = (round(a[0], 4), round(a[1], 4)), (round(b[0], 4), round(b[1], 4))
+        Gh.add_edge(a, b, weight=math.dist(a, b))
+    return Gh
+
+
+def build_layout(name, parts, links=None, start_hint=None):
+    """Free 2-D layout, items given in DRAWING order (not reading order):
+    ("glyph", ch, x0, y0, xscale) or ("heart", centre_x, bottom_y, height).
+    links[i] = preferred connector height (absolute units) between item i and i+1."""
+    Gs, labels = [], []
+    for part in parts:
+        if part[0] == "heart":
+            _, cx, by, h = part
+            hp = heart_curve(n=72, height=h)
+            hp[:, 0] += cx
+            hp[:, 1] += by
+            Gs.append(_heart_graph(hp)); labels.append("heart")
+        else:
+            _, ch, x0, y0, xs = part
+            w, strokes = BLOCK[ch]
+            xs = 1.0 if ch in "I|" else xs
+            Gs.append(_glyph_graph([[(px * xs + x0, py + y0) for px, py in pl] for pl in strokes]))
+            labels.append("I" if ch == "|" else ch)
+    return _assemble(name, Gs, labels, links, start_hint)
+
+
+def _assemble(name, Gs, labels, links, start_hint=None):
     links = list(links) if links and len(links) == len(Gs) - 1 else [None] * (len(Gs) - 1)
 
     # decide entry/exit node of each item
@@ -275,7 +306,6 @@ def build_shape(name, glyphs, links=None, heart=True, heart_height=4.4, heart_ga
         exits[-1] = max(odd, key=lambda n: n[0]) if odd else entries[-1]
 
     path, ink, conns, starts, item = [], [], [], [], []
-    labels = list(name) + (["heart"] if heart else [])
     for i, G in enumerate(Gs):
         seg = _postman_path(G, entries[i], exits[i])
         starts.append((labels[i] if i < len(labels) else f"#{i}", seg[0]))
@@ -294,11 +324,11 @@ def block_word(word, spacing=None, xscale=1.0, name=None, **kw):
     glyphs, x = [], 0.0
     for i, ch in enumerate(word):
         w, strokes = BLOCK[ch]
-        if ch != "I":   # keep the serifed I narrow
+        if ch not in "I|":   # keep I narrow
             w, strokes = w * xscale, [[(px * xscale, py) for px, py in pl] for pl in strokes]
         glyphs.append((x, w, strokes))
         x += w + spacing.get(i, 1.0)
-    sh = build_shape(word, glyphs, **kw)
+    sh = build_shape(word.replace("|", "I"), glyphs, **kw)
     sh.name = name or word
     return sh
 
@@ -322,12 +352,30 @@ def flexed(shape: Shape, offsets):
     if not offsets:
         return shape
     P = shape.path.copy()
-    for i, (dx, dy, sc) in offsets.items():
+    for i, t in offsets.items():
         m = shape.item == i
         if not m.any():
             continue
-        c = (shape.path[m].min(axis=0) + shape.path[m].max(axis=0)) / 2
-        P[m] = (shape.path[m] - c) * sc + c + np.array([dx, dy])
+        lo, hi = shape.path[m].min(axis=0), shape.path[m].max(axis=0)
+        if len(t) in (4, 5):   # move box edges: (left, right, bottom, top[, rot deg]), units
+            dl, dr, db, dt = t[:4]
+            span = np.maximum(hi - lo, 1e-9)
+            f = (shape.path[m] - lo) / span
+            nlo = lo + np.array([dl, db])
+            nhi = hi + np.array([dr, dt])
+            flat = (hi - lo) < 1e-6
+            Q = nlo + f * (nhi - nlo)
+            Q[:, flat] = shape.path[m][:, flat] + np.array([dl, db])[flat]
+            if len(t) == 5 and t[4]:
+                a = math.radians(t[4])
+                c = (nlo + nhi) / 2
+                R = np.array([[math.cos(a), -math.sin(a)], [math.sin(a), math.cos(a)]])
+                Q = (Q - c) @ R.T + c
+            P[m] = Q
+        else:
+            dx, dy, sc = t
+            c = (lo + hi) / 2
+            P[m] = (shape.path[m] - c) * sc + c + np.array([dx, dy])
     return Shape(shape.name, P, shape.ink, shape.connectors, shape.letter_starts, shape.item)
 
 
@@ -350,6 +398,25 @@ def candidate_shapes():
     S["FOTINI"] = block_word("FOTINI", links=[2, 4, 0, 0, 4, 0], spacing=dict.fromkeys(range(6), 1.4))
     S["FOTINI_wide"] = block_word("FOTINI", links=[2, 4, 0, 0, 4, 0], xscale=1.35, name="FOTINI_wide",
                                   spacing=dict.fromkeys(range(6), 1.4))
+    # roomier layout: wider gaps keep connectors from fusing letters; bigger heart
+    S["FOTINI_v2"] = block_word("FOTINI", links=[2, 4, 0, 0, 4, 0], xscale=1.15, name="FOTINI_v2",
+                                spacing=dict.fromkeys(range(6), 2.0), heart_height=5.6, heart_gap=1.8)
+    # underline style: plain I's, letters joined along the baseline from O onwards
+    S["FOTINI_ul"] = block_word("FOT|N|", links=[2, 0, 0, 0, 0, 0], xscale=1.15, name="FOTINI_ul",
+                                spacing={0: 1.3, 1: 1.3, 2: 1.4, 3: 1.4, 4: 1.4, 5: 1.6}, heart_height=5.0)
+    # two rows: FOTI / NI + heart. Drawn F,O,T,I then down to the heart, then I, N
+    # right-to-left so that every connector is short.
+    R2 = -5.8
+    S["FOTINI_2row"] = build_layout("FOTINI_2row", [
+        ("glyph", "F", 0.0, 0, 1.15), ("glyph", "O", 3.6, 0, 1.15), ("glyph", "T", 7.3, 0, 1.15),
+        ("glyph", "I", 11.4, 0, 1.0),
+        ("heart", 9.4, R2, 4.6), ("glyph", "I", 5.0, R2, 1.0), ("glyph", "N", 1.0, R2, 1.15)],
+        links=[2, 4, 0, -0.6, R2, R2])
+    # LO / VE + heart: V first, up into L, then O, down into E, then the heart
+    S["LOVE_2row"] = build_layout("LOVE_2row", [
+        ("glyph", "V", 0.2, R2, 1.15), ("glyph", "L", 0.0, 0, 1.2), ("glyph", "O", 3.6, 0, 1.3),
+        ("glyph", "E", 4.2, R2, 1.2), ("heart", 10.6, R2, 4.6)],
+        links=[R2 + 4, 0, -0.9, R2])
     S["LOVE"] = block_word("LOVE", links=[0, 0, 4, 0], spacing=dict.fromkeys(range(4), 1.3))
     S["heart"] = heart_only()
     return S

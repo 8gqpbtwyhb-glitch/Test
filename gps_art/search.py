@@ -129,8 +129,7 @@ def evaluate(net, shape: Shape, pl: Placement, closed=False):
     shape_xy = place(shape.path, c0, pl.unit, pl.theta, pl.cx, pl.cy)
     pl.nodes, pl.route_xy, pl.edges, pl.shape_xy = nodes, route_xy, edges, shape_xy
     pl.metrics = metrics(net, shape_xy, route_xy, pl.unit)
-    pl.score = objective(pl.metrics) + 0.04 * sum(abs(dx) + abs(dy) + 3 * abs(sc - 1)
-                                                  for dx, dy, sc in pl.flex.values())
+    pl.score = objective(pl.metrics) + 0.04 * sum(_flex_size(t) for t in pl.flex.values())
     return pl
 
 
@@ -201,6 +200,55 @@ def refine(net, shape, pl: Placement, rounds=2):
     return best
 
 
+def _flex_size(t):
+    if len(t) in (4, 5):
+        return sum(abs(v) for v in t[:4]) / 2 + (abs(t[4]) / 10 if len(t) == 5 else 0)
+    dx, dy, sc = t
+    return abs(dx) + abs(dy) + 3 * abs(sc - 1)
+
+
+def box_fit(net, shape, pl: Placement, rng=0.6, step=0.2, rots=(-10, -5, 0, 5, 10)):
+    """Per letter, move each edge of its bounding box (left/right/bottom/top) by up
+    to `rng` units so its strokes sit on real streets. Uses the fast proxy cost,
+    then routes once. Letters keep their order and never overlap."""
+    c0 = shape_centre(shape)
+    vals = np.arange(-rng, rng + 1e-9, step)
+    items = sorted(set(shape.item.tolist()))
+    flex = {}
+    prev_right = -1e9
+    import itertools
+    for i in items:
+        m = shape.item == i
+        base = shape.path[m]
+        lo, hi = base.min(axis=0), base.max(axis=0)
+        w, h = hi - lo
+        best = (math.inf, (0, 0, 0, 0, 0))
+        for dl, dr, db, dt, rot in itertools.product(vals, vals, vals, vals, rots):
+            nw, nh = w + dr - dl, h + dt - db
+            if w > 0.5 and not (0.7 * w <= nw <= 1.35 * w):
+                continue
+            if h > 0.5 and not (0.8 * h <= nh <= 1.25 * h):
+                continue
+            if lo[0] + dl < prev_right + 0.6:
+                continue
+            sub = flexed(Shape(shape.name, base, item=np.zeros(len(base), int)), {0: (dl, dr, db, dt, rot)})
+            pts = densify(sub.path, 0.2)
+            d = np.diff(pts, axis=0)
+            ok = np.hypot(d[:, 0], d[:, 1]) > 1e-9
+            if not ok.any():
+                continue
+            tang = (np.arctan2(d[ok, 1], d[ok, 0]) + math.radians(pl.theta)) % np.pi
+            world = place(pts[:-1][ok], c0, pl.unit, pl.theta, pl.cx, pl.cy)
+            cost = net.proxy_cost(world, tang, pl.unit) + 0.03 * (abs(dl) + abs(dr) + abs(db) + abs(dt)) \
+                + 0.004 * abs(rot)
+            if cost < best[0]:
+                best = (cost, (float(dl), float(dr), float(db), float(dt), float(rot)))
+        flex[i] = best[1]
+        prev_right = hi[0] + best[1][1]
+    q = Placement(pl.area, pl.shape, pl.unit, pl.theta, pl.cx, pl.cy, flex=flex)
+    return evaluate(net, shape, q)
+
+
 def _copy(pl, **kw):
     q = Placement(pl.area, pl.shape, pl.unit, pl.theta, pl.cx, pl.cy, flex=dict(pl.flex))
     for k, v in kw.items():
@@ -218,16 +266,23 @@ def flex_optimize(net, shape, pl: Placement, passes=2, steps=(-0.5, -0.25, 0, 0.
         improved = False
         for i in items:
             cur = best.flex.get(i, (0.0, 0.0, 1.0))
-            trials = [(cur[0] + dx / (p_ + 1), cur[1] + dy / (p_ + 1), cur[2])
-                      for dx in steps for dy in steps if dx or dy]
+            if len(cur) in (4, 5):
+                trials = [(cur[0] + dx / (p_ + 1), cur[1] + dx / (p_ + 1),
+                           cur[2] + dy / (p_ + 1), cur[3] + dy / (p_ + 1)) + tuple(cur[4:])
+                          for dx in steps for dy in steps if dx or dy]
+            else:
+                trials = [(cur[0] + dx / (p_ + 1), cur[1] + dy / (p_ + 1), cur[2])
+                          for dx in steps for dy in steps if dx or dy]
             for t in trials:
-                if abs(t[0]) > 0.75 or abs(t[1]) > 0.75:
+                if max(abs(v) for v in t[:2]) > 0.9:
                     continue
                 q = _copy(best); q.flex[i] = t
                 evaluate(net, shape, q)
                 if q.score < best.score - 1e-4:
                     best, improved = q, True
             cur = best.flex.get(i, (0.0, 0.0, 1.0))
+            if len(cur) in (4, 5):
+                continue
             for sc in scales:
                 if sc == 1.0:
                     continue

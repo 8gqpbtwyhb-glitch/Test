@@ -86,7 +86,9 @@ def validate_gpx(path, net, max_off_edge=3.0, max_jump=30.0):
 def problem_spots(net, nodes, edges):
     used = set(edges)
     out = []
-    names = lambda e: _first(net.etags[e].get("name")) or net.etags[e].get("highway")
+    def names(e):
+        n = net.etags[e].get("name") or net.etags[e].get("highway")
+        return " / ".join(map(str, n)) if isinstance(n, list) else str(n)
     lens = Counter()
     for e in edges:
         t = net.etags[e]
